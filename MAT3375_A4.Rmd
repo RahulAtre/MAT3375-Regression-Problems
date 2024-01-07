@@ -1,0 +1,337 @@
+---
+title: "MAT3375_Assignment-4"
+author: "Rahul Atre"
+date: "2023-11-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(MPV) 
+library(ggplot2)
+library(olsrr)
+library(glmnet)
+```
+
+
+## Exercise 8.3
+
+Consider the delivery time data in Example 3.1. In Section 4.2.5 it is noted that these observations were collected in four cities: San Diego, Boston, Austin, and Minneapolis. 
+
+a. Develop a model that relates delivery time y to cases $x_1$, distance $x_2$, and the city in which the delivery was made. Estimate the parameters of the model.
+
+Ans: From reading Section 4.2, the text mentions that from the 25 observations in Table 3.2 that were collected, obs. 1-7 were collected in San Diego, 8-17 in Boston, 18-23 in Austin, and 24-25 in Minneapolis. We will introduce 4-1=3 dummy variables. 
+
+- We let $x_3$ = 1 and rep. if the obs. was collected in San Diego, 0 otherwise
+- We let $x_4$ = 1 and rep. if the obs. was collected in Boston, 0 otherwise
+- We let $x_5$ = 1 and rep. if the obs. was collected in Austin, 0 otherwise
+- Also, if $x_3 = x_4 = x_5 = 0$, then the obs. was collected in Minneapolis
+
+```{R}
+delivery_df = p8.3
+
+san_data = rep(0, 25)
+boston_data = rep(0, 25)
+austin_data = rep(0, 25) 
+
+delivery_df$x3 = san_data
+delivery_df$x4 = boston_data
+delivery_df$x5 = austin_data
+
+for (i in 1:7){
+  delivery_df[i, ]$x3 = 1
+}
+
+for (i in 8:17){
+  delivery_df[i, ]$x4 = 1
+}
+
+for (i in 18:23){
+  delivery_df[i, ]$x5 = 1
+}
+
+```
+
+Also, we know that y rep. the delivery time, $x_1$ rep. the # of cases, and $x_2$ rep. the distance.
+
+Let us now calculate the parameters using the lm() function to fit the linear model:
+
+```{R}
+full_model = lm(y ~ x1 + x2 + x3 + x4 + x5, data = delivery_df)
+full_model
+```
+From the above function call, we obtain $b_0$ = 0.41625, $b_1$ = 1.77028, $b_2$ = 0.01083, $b_3$ = 2.28510, $b_4$ = 3.73764, and $b_5$ = -0.45264.
+
+Therefore, the linear regression model will be $\hat{y} = 0.41625 + 1.77028x_1 + 0.01083x_2 + 2.28510x_3 + 3.73764x_4 - 0.45264x_5$.
+
+
+b. Is there an indication that delivery site is an important variable? 
+
+We can perform a partial F-test to check if there is an indication of delivery site being an important variable. 
+
+- Full Model: $y_i = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \beta_3 x_3 + \beta_4 x_4 + \beta_5 x_5 + \epsilon_i$
+- Reduced Model: $y_i = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \epsilon_i$
+
+We already have the full model from part a.
+
+```{R}
+reduced_model = lm(y ~ x1 + x2, data = delivery_df)
+anova(reduced_model, full_model)
+```
+Let the null hypothesis be $H_0: \beta_3 = \beta_4 = \beta_5 = 0$. From the above anova table, we can see that the partial F-statistic is 2.4025 and the p-value is 0.09946. Since the p-value is quite high, this statistic is not significant. Therefore, we do not reject the null hypothesis and there is not enough evidence to suggest that the delivery site is an important variable. 
+
+
+c. Analyze the residuals from this model. What conclusions can you draw 
+regarding model adequacy? 
+
+To analyze the residuals, we need to generate the residual vs. fitted, normal qq-plot, and residuals vs. leverage
+
+
+```{R}
+par(mfrow=c(2,2))
+plot(full_model)
+```
+
+From the QQ-plot, we can see that most of the residual points towards the end don't follow the line of best fit, indicating that the normality assumption is not met (Residuals are not normally distributed). From the residuals vs. fitted, we can see that the points follow a u-shaped curve, meaning that the constancy of variance assumption is not met and that the linear model is not ideal for this dataset. Overall, the quality of this model is not satisfied.
+
+
+## Exercise 9.17
+
+Apply ridge regression to the Hald cement data in Table B.21.
+
+a. Use the ridge trace to select an appropriate value of k. Is the final model a good one? 
+
+```{R}
+hald_df <- read.table("C://Users/User/OneDrive/Documents/Rahul/uOttawa/2023(9) - Fall/MAT3375 - Regression Analysis/Assignments/Hald Cement Data.txt", header = TRUE)
+y = hald_df$Y
+x1 = hald_df$X1
+x2 = hald_df$X2
+x3 = hald_df$X3
+x4 = hald_df$X4
+```
+
+From this data, we can perform cross-validation and obtain the minimum $\lambda$ value, k, for ridge regression:
+
+```{R}
+combinedX = data.matrix(hald_df[, c("X1", "X2", "X3", "X4")])
+multipleModels = cv.glmnet(combinedX, y, alpha=0)
+
+min_lambda = multipleModels$lambda.min
+ridge_model = glmnet(combinedX, y, alpha = 0, lambda = min_lambda)
+
+coef(ridge_model)
+```
+From the above function call, we obtain $b_0$ = 86.3899965, $b_1$ = 1.1298726, $b_2$ = 0.2906186, $b_3$ = -0.2546536, $b_4$ = -0.3464944.
+
+Therefore, the ridge regression model will be $\hat{y} = 86.3899965 + 1.1298726x_1 + 0.2906186x_2 - 0.2546536x_3 - 0.3464944x_4$.
+
+To know if it is a good model, we must check the $R^2$ value:
+
+```{R}
+y_predict= predict(ridge_model, combinedX)
+SSE = sum((y_predict - y)^2)
+SST = sum((y - mean(y))^2)
+r_sqr = 1 - SSE/SST
+
+r_sqr
+```
+From the above function call, $R^2$ = 0.9793364 $\approx$ 97.93%. Therefore, about 97.93% of the total variability in y is explained by this model, which is extremely good. Although there are more ways to check if this is a good model, a high $R^2$ value is a decent enough indicator. 
+
+Therefore, this final model is exceptionally good at fitting the provided data.
+
+
+b. How much inflation in the residual sum of squares has resulted from the use of ridge regression? 
+
+
+If we want to know the inflation in SSE from ridge in comparison to the least-squares model, we need to examine the SSE of it:
+
+```{R}
+least_sqr_model = lm(Y ~ X1 + X2 + X3 + X4, data = hald_df)
+anova(least_sqr_model)
+
+SSE #Ridge Regression residual sum of squares
+```
+From the above function call, we can see that the residual sum of squares is 47.86, whereas for the ridge regression it is 56.11751. Calculating the overall inflation:
+
+```{R}
+inflation = (56.11751 - 47.86)/47.86 * 100
+```
+Therefore, the inflation in the residual sum of squares has resulted from the use of ridge regression is 17.25%.
+
+
+c. Compare the ridge regression model with the two-regressor model involving $x_1$ and $x_2$ developed by all possible regressions in Example 9.1.
+
+From the example given in the textbook, if we take a look at the two-regressor model involving $x_1$ and $x_2$, we can see that the $R^2 = 0.97868 = 97.868$%, and the $SSE = 57.9045$. In comparison, the ridge regression model gave us $R^2 = 0.97868 = 97.93$%, and $SSE = 56.11751$. 
+
+Both models appear to have very similar values for the two. Both models fit the data exceptionally well, with very high $R^2$ values.
+
+
+## Exercise 10.4
+
+Consider the solar thermal energy test data in Table B.2.
+
+a. Use forward selection to specify a subset regression model.
+
+First, let us specify what the predictors and response represent. 
+$y$ rep. the total heat flux (kwatts)
+$x_1$ rep. the Insolation (watts/$m^2$)
+$x_2$ rep. the position of focal point in east direction (inches)
+$x_3$ rep. the position of focal point in south direction (inches)
+$x_4$ rep. the position of focal point in north direction (inches) 
+$x_5$ rep. the time of day
+
+We can use the olsrr package to perform forward regression on the model:
+
+```{R}
+lin_model = lm(y ~ ., data = table.b2)
+ols_step_forward_p(lin_model)
+```
+From the above function call, we can see that forward selection has chosen all predictors $x_1, x_2, x_3, x_4, x_5$. Checking the performance of the model:
+
+```{R}
+summary(lin_model)
+```
+The linear model when all predictors are included is $\hat{y} = 325.43612 + 0.06753x_1 + 2.55198x_2 + 3.80019x_3 - 22.94947x_4 + 2.41748x_5$. 
+
+b. Use backward elimination to specify a subset regression model.
+
+
+```{R}
+ols_step_backward_p(lin_model)
+```
+Since backward elimination did not remove any variables from the model, similar to forward selection, it has chosen all predictors $x_1, x_2, x_3, x_4, x_5$. As such, the linear model for backward will be the same, which is $\hat{y} = 325.43612 + 0.06753x_1 + 2.55198x_2 + 3.80019x_3 - 22.94947x_4 + 2.41748x_5$.
+
+c. Use stepwise regression to specify a subset regression model.
+
+
+```{R}
+ols_step_both_p(lin_model)
+```
+From the above function call, the stepwise regression has chosen the predictors $x_1, x_2, x_3, x_4$ and omitted $x_5$. Let us fit this stepwise model:
+
+
+```{R}
+stepwise_model = lm(y ~ x1 + x2 + x3 + x4, data = table.b2)
+summary(stepwise_model)
+```
+From the above function call, we get the model $\hat{y} = 270.21013 + 0.05156x_1 + 2.95141x_2 + 5.33861x_3 - 21.11940x_4$. 
+
+d. Apply all possible regressions to the data. Evaluate $R^2_{p}$, $C_{p}$ and $MS_{Res}$ for each model. Which subset model do you recommend?
+
+
+```{R}
+ols_step_all_possible(lin_model)
+```
+
+Applying all possible regressions, the recommended subset model that we obtain is the one that includes all predictors $x_1, x_2, x_3, x_4,x_5$. This is the same as forward selection and backwards elimination. This has the best $R^2$ value, which is 0.89876023 = 89.87%, and a Mallow's Cp at 6, which is exactly p+1. It is closest to the actual number of predictors.
+
+
+e. Compare and contrast the models produced by the variable selection strategies in parts a - d.
+
+From the previous parts, we have obtained two models, one with all predictors, and one with $x_5$ removed. Let us compare these:
+
+
+i) Full Model
+```{R}
+summary(lin_model) #Overall summary
+
+par(mfrow=c(2,2)) #Residuals
+plot(lin_model)
+
+ols_coll_diag(lin_model) #Variance factor and tolerance
+```
+
+ii) Stepwise Model
+```{R}
+summary(stepwise_model) #Overall summary
+
+par(mfrow=c(2,2)) #Residuals
+plot(stepwise_model)
+
+ols_coll_diag(stepwise_model) #Variance factor and tolerance
+```
+
+Looking at the summary call for the full model, it is visually apparent that the full models predictors are less statistically significant than the ones for stepwise. For stepwise, 2/5 predictors have a p-value less than 0.001 (***). However, for the full model, only $x_4$, 1/5 predictor has a p-value less than 0.001. 
+
+Also, the $R^2$ value of the stepwise is 0.8909 = 89.09%, whereas the $R^2$ for the full model is 0.8988 = 89.88%. Both models have a similar $R^2$, which is quite high. Therefore, it can be said that both models explain the constance of variance well enough.
+
+Let's look at the residuals now. For the full model's residuals vs. fitted, we can see that the points follow a downward u-shape curve, meaning that the constancy of variance assumption is not met. Although towards the end the points do follow a balanced distribution on both sides, it is not to the standard we would like. The points at the beginning of QQ-plot do not follow the line of best fit, so normality assumption is not met either. 
+
+In comparison to the full model, the stepwise model is not that different. The normality and constancy of variance assumptions are not properly met. Overall, the quality of both models for residuals is not as reasonable as we would like. 
+
+Lastly, for the variance inflation factor, the values for both models are quite low (less than 10). Therefore, there is little multicolinearity for the full model (forwards, backwards, all possible) and stepwise model.
+
+
+## Exercise 13.3
+
+The compressive strength of an alloy fastener used in aircraft construction is being studied. Ten loads were selected over the range 2500 – 4300 psi and a number of fasteners were tested at those loads. The numbers of fasteners failing at each load were recorded. The complete test data are shown below.
+
+```{R}
+p13.3
+```
+
+a. Fit a logistic regression model to the data. Use a simple linear regression model as the structure for the linear predictor. 
+
+```{R}
+x_load = p13.3$x
+n_sampleSize = p13.3$n
+rNumberFailing = p13.3$r
+
+fail_per_sample = rNumberFailing / n_sampleSize
+
+logistic_model = glm(fail_per_sample ~ x_load, family = "binomial", weights = n_sampleSize)
+logistic_model
+```
+
+From the above glm() function call, the logistic regression model is $\hat{\pi}_i = \frac{e^{-5.34 + 0.0015x_i}}{1 + e^{-5.34 + 0.0015x_i}}$, where $\hat{\pi}_i$ is the probability of the alloy fastener failing, and $x_i$ representing the load given.
+
+b. Does the model deviance indicate that the logistic regression model from part a is adequate? 
+
+If we check the above function call, we can see that the deviance is 0.3719, which is extremely low. Therefore the logistic regression model from part a is very adequate. 
+
+c. Expand the linear predictor to include a quadratic term. Is there any evidence that this quadratic term is required in the model?
+
+```{R}
+quad_term = x_load^2
+quadratic_logistic_model = glm(fail_per_sample ~ x_load + quad_term, family = "binomial", weights = n_sampleSize)
+quadratic_logistic_model
+```
+After including the quadratic term, we obtain a logistic linear model that is $\hat{\pi}_i = \frac{e^{-4.269 + 0.0009x}}{1 + e^{-5.34 + 0.0015x_i}}$, where $\hat{\pi}_i$ is the probability of the alloy fastener failing, and $x_i$ representing the load given.
+
+The residual deviance with the quadratic term included is 0.2837. The difference in deviance between the two is $Deviance_x$ - $Deviance_{x,x^2} = 0.3719 - 0.2837 = 0.0882$. Since the difference in deviances is so low, it does not warrant an increase in complexity of the model.
+
+Therefore, there is not enough evidence to indicate that the quadratic term is required in the model.
+
+
+d. For the quadratic model in part c, find Wald statistics for each individual model parameter.
+
+
+```{R}
+summary(quadratic_logistic_model)
+```
+From the above function call, we can obtain the Z-values, which will tell us the Wald Statistics.
+
+$H_0$: For $\beta_0$, the Wald Statistic is z = -1.172, which is not significant.
+$H_1$: For $\beta_1$, the Wald Statistic is z = 0.418, which is not significant.
+$H_2$: For $\beta_2$, the Wald Statistic is z = 0.297, which is not significant.
+
+
+e. Find approximate 95% confidence intervals on the model parameters for the quadratic model from part c.
+
+We can obtain a 95% confidence interval using the following function:
+
+```{R}
+confint(quadratic_logistic_model)
+```
+From the above function call, we have obtained the following 95% confidence interval for the three parameters of our quadratic model:
+
+$\beta_0$: [-11.477, 2.826]
+
+$\beta_1$: [-3.33 x $10^{-3}$, 5.178 x $10^{-3}$]
+
+$\beta_2$: [-5.277 x $10^{-7}$, 7.156 x $10^{-7}$]
+
+
